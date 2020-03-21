@@ -1,19 +1,27 @@
 import numpy as np
 import torch
 import json
+import yaml
 import time
 import api
 from utils_box.dataset import Dataset_CSV
 from detector import Detector
 import utils_box.augment as augment
 import random
+import os
 
+from tensorboardX import SummaryWriter
 
-# Read train.json and set current GPU (for nms_cuda)
-with open('train.json', 'r') as load_f:
-    cfg = json.load(load_f)
+# Read train.yaml and set current GPU (for nms_cuda)
+with open('train.yaml', 'r') as load_f:
+    cfg = yaml.load(load_f)
 torch.cuda.set_device(cfg['device'][0])
 
+# Create working directory for saving intermediate results
+working_dir = cfg['working_dir']
+if not os.path.exists(working_dir):
+    os.makedirs(working_dir)
+tb_writer = SummaryWriter(working_dir)
 
 if cfg['seed'] >= 0:
     seed = cfg['seed']
@@ -91,8 +99,8 @@ def lr_func(step):
 
 
 # Prepare API structure
-trainer = api.Trainer(net, dataset_train, loader_train, cfg['device'], opt, cfg['grad_clip'], lr_func)
-evaluator = api.Evaluator(net, dataset_eval, loader_eval, cfg['device'])
+trainer = api.Trainer(net, dataset_train, loader_train, cfg['device'], opt, cfg['grad_clip'], lr_func, tb_writer)
+evaluator = api.Evaluator(net, dataset_eval, loader_eval, cfg['device'], tb_writer)
 if cfg['load']:
     trainer.step = log[-1][3]
     trainer.epoch = log[-1][4]
@@ -109,6 +117,6 @@ while True:
     map_mean, map_50, map_75 = evaluator.step_epoch()
     log.append([map_mean, map_50, map_75, trainer.step, trainer.epoch])
     if cfg['save']:
-        torch.save(net.module.state_dict(),'net.pkl')
-        np.save('log.npy', log)
+        torch.save(net.module.state_dict(), working_dir + 'net.pkl')
+        np.save(working_dir + 'log.npy', log)
 print('Schedule finished!')

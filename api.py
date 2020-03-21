@@ -2,6 +2,7 @@ import torch
 import numpy as np 
 import time
 import json
+from tqdm import tqdm
 import torchvision.transforms as transforms
 from utils_box.eval_csv import eval_detection
 from utils_box.dataset import center_fix
@@ -15,7 +16,7 @@ from detector import get_loss, get_pred
 
 class Trainer(object):
     def __init__(self, net, dataset, loader, device,   
-                    opt, grad_clip=3, lr_func=None):
+                    opt, grad_clip=3, lr_func=None, tensorboard_writer=None):
         '''
         external initialization structure: 
             net(DataParallel), dataset(Dataset), loader(DataLoader), device(List), opt(Optimizer)
@@ -32,14 +33,15 @@ class Trainer(object):
         self.lr_func = lr_func
         self.step = 0
         self.epoch = 0
+        self.tb_writer = tensorboard_writer
     
-
     def step_epoch(self):
         '''
         train one epoch
         '''
         lr = -1
-        for i, (imgs, boxes, labels, locs, scales) in enumerate(self.loader):
+        progressbar = tqdm(enumerate(self.loader), total=len(self.loader))
+        for i, (imgs, boxes, labels, locs, scales) in progressbar:
             if self.lr_func is not None:
                 lr = self.lr_func(self.step)
                 for param_group in self.opt.param_groups:
@@ -57,15 +59,22 @@ class Trainer(object):
             maxmem = int(torch.cuda.max_memory_allocated(device=self.device[0]) / 1024 / 1024)
             time_end = time.time()
             totaltime = int((time_end - time_start) * 1000)
-            print('total_step:%d: epoch:%d, step:%d/%d, loss:%f, maxMem:%dMB, time:%dms, lr:%f' % \
-                (self.step, self.epoch, i*batch_size, len(self.dataset), loss, maxmem, totaltime, lr))
+            # descriptionStr = ("total_step:%d: epoch:%d, step:%d/%d, loss:%f, maxMem:%dMB, time:%dms, lr:%f" % (self.step, self.epoch, i*batch_size, len(self.dataset), loss, maxmem, totaltime, lr))
+            progressbar.set_description("epoch: %d, loss: %f, lr: %f" % (self.epoch, loss, lr))
+
+            # writing log to tensorboard
+            if self.tb_writer and i % 10 == 0:
+                totalStep = self.epoch * len(self.dataset) + i * batch_size
+                self.tb_writer.add_scalar('training/loss', loss, totalStep)
+                self.tb_writer.add_scalar('training/learning rate', lr, totalStep)
+
             self.step += 1
         self.epoch += 1
 
 
 
 class Evaluator(object):
-    def __init__(self, net, dataset, loader, device):
+    def __init__(self, net, dataset, loader, device, tensorboard_writer=None):
         '''
         external initialization structure: 
             net(DataParallel), dataset(Dataset), loader(DataLoader), device(List),

@@ -11,7 +11,7 @@ from detector import Detector
 
 # TODO: Set your coco_table_file, coco_anno_root and set_name
 coco_table_file = 'data/coco_table.json'
-coco_anno_root = '/home1/xyt/dataset/coco17/'
+coco_anno_root = 'coco17/'
 set_name = 'val2017'
 # ==================================
 
